@@ -1,36 +1,65 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aquifer | charity: water</title>
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>Aquifer | Clean Water Puzzle</title>
+
+  <link rel="preconnect"
+        href="https://fonts.googleapis.com">
+  <link rel="preconnect"
+        href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <header>
     <h1>AQUIFER</h1>
     <p>Dig a path. Save the water.</p>
-    <p class="brand">Inspired by charity: water</p>
+    <span class="brand">Inspired by charity: water</span>
   </header>
 
   <main>
     <section class="game-container">
+
+      <div class="difficulty-container">
+        <label for="difficulty">Difficulty:</label>
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
       <div class="stats">
         <span>Level: <strong id="level">1</strong></span>
         <span>Collected: <strong id="collected">0%</strong></span>
-        <span>Goal: <strong>70%</strong></span>
+        <span>Goal: <strong id="goal">70%</strong></span>
+      </div>
+
+      <div class="progress-container">
+        <div id="progressBar"></div>
       </div>
 
       <div class="game-area">
-        <canvas id="gameCanvas" width="400" height="560"
-          aria-label="Aquifer digging puzzle game">
+        <canvas id="gameCanvas"
+                width="400"
+                height="560"
+                aria-label="Aquifer digging game">
         </canvas>
       </div>
 
       <p id="message" role="status">
-        Dig a path from the water source to the tank!
+        Press Start Game to begin!
       </p>
+
+      <div id="milestoneContainer"
+           aria-live="polite"></div>
 
       <div class="controls">
         <button id="startBtn">Start Game</button>
@@ -38,20 +67,37 @@
         <button id="restartBtn">Restart Level</button>
         <button id="nextBtn" hidden>Next Level</button>
       </div>
+
+      <div id="celebration" hidden>
+        <h2>Level Complete!</h2>
+        <p>Every drop matters!</p>
+      </div>
+
     </section>
 
     <section class="about">
       <h2>Every Drop Matters</h2>
       <p>
-        Clean water changes lives. Learn how charity: water
-        helps communities access clean and safe drinking water.
+        Aquifer is a puzzle game inspired by the
+        importance of clean water. Guide as much
+        water as possible into the collection tank!
       </p>
-      <a href="https://www.charitywater.org"
-         target="_blank" rel="noopener noreferrer">
-        Learn More About charity: water
-      </a>
     </section>
   </main>
+
+  <footer>
+    <p>Inspired by charity: water's mission.</p>
+
+    <a href="https://www.charitywater.org"
+       target="_blank" rel="noopener noreferrer">
+      Visit charity: water
+    </a>
+
+    <a href="https://www.charitywater.org/donate"
+       target="_blank" rel="noopener noreferrer">
+      Donate
+    </a>
+  </footer>
 
   <script src="script.js"></script>
 </body>

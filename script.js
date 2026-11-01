@@ -1,10 +1,17 @@
-
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const levelText = document.getElementById("level");
 const collectedText = document.getElementById("collected");
+const goalText = document.getElementById("goal");
 const message = document.getElementById("message");
+const progressBar = document.getElementById("progressBar");
+const milestoneContainer =
+  document.getElementById("milestoneContainer");
+const celebration = document.getElementById("celebration");
+
+const difficultySelect =
+  document.getElementById("difficulty");
 
 const startBtn = document.getElementById("startBtn");
 const releaseBtn = document.getElementById("releaseBtn");
@@ -14,69 +21,105 @@ const nextBtn = document.getElementById("nextBtn");
 const SIZE = 10;
 const COLS = 40;
 const ROWS = 56;
-const GOAL = 70;
 const MAX_LEVEL = 3;
 
-const SOURCE = { x: 17, y: 0, w: 6, h: 5 };
-const TANK = { x: 15, y: 51, w: 10, h: 5 };
+const SOURCE = { x: 20, y: 5 };
+const TANK = { x: 20, y: 51, w: 10, h: 5 };
+
+const difficultyGoals = {
+  easy: 50,
+  normal: 70,
+  hard: 90
+};
+
+const milestones = [
+  { value: 25, text: "25% collected! Great start!" },
+  { value: 50, text: "Halfway there! Keep going!" },
+  { value: 75, text: "75% collected! Almost there!" }
+];
+
+const levelRocks = [
+  [[9, 16, 3], [29, 17, 3], [19, 27, 4],
+   [8, 37, 3], [31, 39, 3]],
+  [[8, 14, 4], [28, 14, 4], [19, 23, 4],
+   [9, 33, 4], [29, 35, 4], [20, 44, 3]],
+  [[10, 12, 4], [28, 12, 4], [19, 21, 5],
+   [7, 30, 4], [32, 31, 4], [19, 40, 4]]
+];
 
 let level = 1;
+let GOAL = 70;
 let grid = [];
-let particles = [];
-let rocks = [];
-let digging = false;
 let started = false;
 let released = false;
 let finished = false;
+let digging = false;
 let collected = 0;
-let lost = 0;
-let emitted = 0;
-let frame = 0;
+let path = [];
+let pathIndex = 0;
+let delivered = 0;
+let deliverable = 0;
 let animationId = null;
+let shownMilestones = new Set();
+let audioContext = null;
 
-const TOTAL_WATER = 100;
+function playSound(type) {
+  try {
+    const AudioClass =
+      window.AudioContext || window.webkitAudioContext;
 
-// Different rock layouts for each level.
-const levelRocks = [
-  [
-    [9, 16, 3],
-    [29, 17, 3],
-    [19, 27, 4],
-    [8, 37, 3],
-    [31, 39, 3]
-  ],
-  [
-    [8, 14, 4],
-    [28, 14, 4],
-    [19, 23, 4],
-    [9, 33, 4],
-    [29, 35, 4],
-    [20, 44, 3]
-  ],
-  [
-    [10, 12, 4],
-    [28, 12, 4],
-    [19, 21, 5],
-    [7, 30, 4],
-    [32, 31, 4],
-    [19, 40, 4],
-    [9, 46, 3],
-    [30, 46, 3]
-  ]
-];
+    if (!AudioClass) return;
 
-function isSource(x, y) {
-  return x >= SOURCE.x && x < SOURCE.x + SOURCE.w &&
-         y >= SOURCE.y && y < SOURCE.y + SOURCE.h;
-}
+    if (!audioContext) {
+      audioContext = new AudioClass();
+    }
 
-function isTank(x, y) {
-  return x >= TANK.x && x < TANK.x + TANK.w &&
-         y >= TANK.y && y < TANK.y + TANK.h;
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    const sounds = {
+      click: [440, 0.08],
+      collect: [660, 0.10],
+      win: [880, 0.35],
+      lose: [220, 0.30]
+    };
+
+    const [frequency, duration] = sounds[type];
+
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+
+    gain.gain.setValueAtTime(
+      0.12, audioContext.currentTime
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.001, audioContext.currentTime + duration
+    );
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + duration);
+  } catch (error) {
+    console.log("Audio unavailable:", error);
+  }
 }
 
 function inside(x, y) {
-  return x >= 0 && x < COLS && y >= 0 && y < ROWS;
+  return x >= 0 && x < COLS &&
+         y >= 0 && y < ROWS;
+}
+
+function isTank(x, y) {
+  return x >= TANK.x - TANK.w / 2 &&
+         x < TANK.x + TANK.w / 2 &&
+         y >= TANK.y && y < ROWS;
 }
 
 function makeLevel() {
@@ -90,142 +133,116 @@ function makeLevel() {
     () => Array(COLS).fill(1)
   );
 
-  particles = [];
-  rocks = levelRocks[level - 1];
-
-  collected = 0;
-  lost = 0;
-  emitted = 0;
-  frame = 0;
-
-  started = false;
-  released = false;
-  finished = false;
-  digging = false;
-
-  // Create the open area above the dirt.
+  // Open the space above the dirt.
   for (let y = 0; y < 6; y++) {
-    for (let x = 0; x < COLS; x++) {
-      grid[y][x] = 0;
-    }
+    grid[y].fill(0);
   }
 
-  // Make the tank area empty.
+  // Open the collection tank.
   for (let y = TANK.y; y < ROWS; y++) {
-    for (let x = TANK.x; x < TANK.x + TANK.w; x++) {
-      grid[y][x] = 0;
+    for (let x = 0; x < COLS; x++) {
+      if (isTank(x, y)) grid[y][x] = 0;
     }
   }
 
-  // Place rocks.
-  for (const [rx, ry, radius] of rocks) {
-    for (let y = 0; y < ROWS; y++) {
+  // Add rocks that cannot be removed.
+  for (const [rx, ry, radius] of levelRocks[level - 1]) {
+    for (let y = 6; y < TANK.y; y++) {
       for (let x = 0; x < COLS; x++) {
-        const distance = Math.hypot(x - rx, y - ry);
-
-        if (distance <= radius) {
+        if (Math.hypot(x - rx, y - ry) <= radius) {
           grid[y][x] = 2;
         }
       }
     }
   }
 
-  levelText.textContent = level;
-  collectedText.textContent = "0%";
+  started = false;
+  released = false;
+  finished = false;
+  digging = false;
 
-  message.textContent = "Press Start Game to begin!";
+  collected = 0;
+  delivered = 0;
+  deliverable = 0;
+  path = [];
+  pathIndex = 0;
+  shownMilestones.clear();
+
+  levelText.textContent = level;
+  goalText.textContent = GOAL + "%";
+  collectedText.textContent = "0%";
+  progressBar.style.width = "0%";
+
+  milestoneContainer.replaceChildren();
+  celebration.hidden = true;
+  nextBtn.hidden = true;
+
   startBtn.disabled = false;
   releaseBtn.disabled = true;
-  nextBtn.hidden = true;
+  difficultySelect.disabled = false;
+
+  message.textContent = "Press Start Game to begin!";
 
   draw();
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, 400, 560);
 
-  // Sky/background.
   ctx.fillStyle = "#9bdcf4";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, 400, 560);
 
-  // Dirt and rocks.
   for (let y = 0; y < ROWS; y++) {
     for (let x = 0; x < COLS; x++) {
       if (grid[y][x] === 1) {
         ctx.fillStyle = "#795038";
         ctx.fillRect(x * SIZE, y * SIZE, SIZE, SIZE);
-      }
-
-      if (grid[y][x] === 2) {
+      } else if (grid[y][x] === 2) {
         ctx.fillStyle = "#666666";
         ctx.fillRect(x * SIZE, y * SIZE, SIZE, SIZE);
       }
     }
   }
 
-  // Grass line.
+  // Grass.
   ctx.fillStyle = "#438d45";
-  ctx.fillRect(0, 60, canvas.width, 5);
+  ctx.fillRect(0, 60, 400, 5);
 
   // Water source.
   ctx.fillStyle = "#303b42";
-  ctx.fillRect(
-    SOURCE.x * SIZE,
-    5,
-    SOURCE.w * SIZE,
-    48
-  );
+  ctx.fillRect(170, 5, 60, 48);
 
   ctx.fillStyle = "#21a9ec";
-  ctx.fillRect(
-    SOURCE.x * SIZE + 5,
-    15,
-    SOURCE.w * SIZE - 10,
-    32
-  );
+  ctx.fillRect(175, 15, 50, 32);
 
   ctx.fillStyle = "white";
-  ctx.font = "12px Arial";
   ctx.textAlign = "center";
+  ctx.font = "12px Arial";
   ctx.fillText("WATER", 200, 12);
 
   // Collection tank.
   ctx.fillStyle = "#252b30";
-  ctx.fillRect(
-    TANK.x * SIZE,
-    TANK.y * SIZE,
-    TANK.w * SIZE,
-    TANK.h * SIZE
-  );
+  ctx.fillRect(150, 510, 100, 50);
 
-  const fillHeight = (collected / TOTAL_WATER) *
-    TANK.h * SIZE;
+  const fillHeight = collected / 100 * 50;
 
   ctx.fillStyle = "#20b6ef";
-  ctx.fillRect(
-    TANK.x * SIZE + 4,
-    (TANK.y + TANK.h) * SIZE - fillHeight,
-    TANK.w * SIZE - 8,
-    fillHeight
-  );
+  ctx.fillRect(154, 560 - fillHeight, 92, fillHeight);
 
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
-  ctx.fillText(
-    "TANK",
-    (TANK.x + TANK.w / 2) * SIZE,
-    (TANK.y + 2.5) * SIZE
-  );
+  ctx.fillText("TANK", 200, 538);
 
-  // Moving water particles.
-  ctx.fillStyle = "#14a9fa";
+  // Animated water particle.
+  if (released && !finished && path.length > 0) {
+    const p = path[Math.min(pathIndex, path.length - 1)];
 
-  for (const p of particles) {
+    ctx.fillStyle = "#00b8ff";
     ctx.beginPath();
     ctx.arc(
-      p.x * SIZE + SIZE / 2,
-      p.y * SIZE + SIZE / 2,
-      4,
+      p.x * SIZE + 5,
+      p.y * SIZE + 5,
+      5,
       0,
       Math.PI * 2
     );
@@ -236,7 +253,6 @@ function draw() {
 function dig(x, y) {
   if (!started || released || finished) return;
 
-  // Remove a small circular area of dirt.
   for (let dy = -2; dy <= 2; dy++) {
     for (let dx = -2; dx <= 2; dx++) {
       const nx = x + dx;
@@ -254,27 +270,27 @@ function dig(x, y) {
   draw();
 }
 
-function pointerPosition(event) {
+function getPointer(event) {
   const rect = canvas.getBoundingClientRect();
 
-  const x = (event.clientX - rect.left) *
-    (canvas.width / rect.width);
-
-  const y = (event.clientY - rect.top) *
-    (canvas.height / rect.height);
-
   return {
-    x: Math.floor(x / SIZE),
-    y: Math.floor(y / SIZE)
+    x: Math.floor(
+      (event.clientX - rect.left) *
+      canvas.width / rect.width / SIZE
+    ),
+    y: Math.floor(
+      (event.clientY - rect.top) *
+      canvas.height / rect.height / SIZE
+    )
   };
 }
 
 function handleDig(event) {
-  const position = pointerPosition(event);
-  dig(position.x, position.y);
+  const p = getPointer(event);
+  dig(p.x, p.y);
 }
 
-canvas.addEventListener("pointerdown", (event) => {
+canvas.addEventListener("pointerdown", event => {
   if (!started || released) return;
 
   digging = true;
@@ -282,10 +298,8 @@ canvas.addEventListener("pointerdown", (event) => {
   handleDig(event);
 });
 
-canvas.addEventListener("pointermove", (event) => {
-  if (digging) {
-    handleDig(event);
-  }
+canvas.addEventListener("pointermove", event => {
+  if (digging) handleDig(event);
 });
 
 canvas.addEventListener("pointerup", () => {
@@ -296,91 +310,124 @@ canvas.addEventListener("pointercancel", () => {
   digging = false;
 });
 
-function canMove(x, y) {
-  return inside(x, y) && grid[y][x] === 0;
-}
+// Find a tunnel from the source to the tank.
+function findPath() {
+  const queue = [SOURCE];
+  const visited = new Set(["20,5"]);
+  const parents = new Map();
+  let head = 0;
 
-function moveWater() {
-  frame++;
+  const directions = [
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+    [0, -1]
+  ];
 
-  // Release water gradually.
-  if (frame % 3 === 0 && emitted < TOTAL_WATER) {
-    particles.push({
-      x: SOURCE.x + Math.floor(SOURCE.w / 2),
-      y: SOURCE.y + SOURCE.h,
-      stuck: 0
-    });
+  while (head < queue.length) {
+    const current = queue[head++];
+    const key = `${current.x},${current.y}`;
 
-    emitted++;
-  }
+    if (isTank(current.x, current.y)) {
+      const result = [];
+      let currentKey = key;
 
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
+      while (currentKey) {
+        const [x, y] = currentKey.split(",").map(Number);
+        result.push({ x, y });
+        currentKey = parents.get(currentKey);
+      }
 
-    // Water reaches the tank.
-    if (isTank(p.x, p.y)) {
-      collected++;
-      particles.splice(i, 1);
-      continue;
+      return result.reverse();
     }
-
-    // Try downward, then diagonal movement.
-    const directions = [
-      [0, 1],
-      [-1, 1],
-      [1, 1]
-    ];
-
-    let moved = false;
 
     for (const [dx, dy] of directions) {
-      const nx = p.x + dx;
-      const ny = p.y + dy;
+      const nx = current.x + dx;
+      const ny = current.y + dy;
+      const nextKey = `${nx},${ny}`;
 
-      if (canMove(nx, ny)) {
-        p.x = nx;
-        p.y = ny;
-        p.stuck = 0;
-        moved = true;
-        break;
-      }
-    }
+      if (!inside(nx, ny)) continue;
+      if (grid[ny][nx] !== 0) continue;
+      if (visited.has(nextKey)) continue;
 
-    // If blocked, try moving sideways.
-    if (!moved) {
-      const sides = Math.random() < 0.5
-        ? [-1, 1]
-        : [1, -1];
-
-      for (const dx of sides) {
-        if (canMove(p.x + dx, p.y)) {
-          p.x += dx;
-          moved = true;
-          p.stuck = 0;
-          break;
-        }
-      }
-    }
-
-    if (!moved) {
-      p.stuck++;
-
-      if (p.stuck > 35) {
-        lost++;
-        particles.splice(i, 1);
-      }
+      visited.add(nextKey);
+      parents.set(nextKey, key);
+      queue.push({ x: nx, y: ny });
     }
   }
 
-  collectedText.textContent = collected + "%";
+  return [];
+}
 
-  if (emitted === TOTAL_WATER && particles.length === 0) {
+function addMilestone(text) {
+  const element = document.createElement("div");
+  element.className = "milestone";
+  element.textContent = text;
+
+  milestoneContainer.appendChild(element);
+}
+
+function updateScore() {
+  collectedText.textContent = collected + "%";
+  progressBar.style.width = collected + "%";
+
+  for (const milestone of milestones) {
+    if (collected >= milestone.value &&
+        !shownMilestones.has(milestone.value)) {
+
+      shownMilestones.add(milestone.value);
+      addMilestone(milestone.text);
+      playSound("collect");
+    }
+  }
+}
+
+function animateWater() {
+  if (finished) return;
+
+  if (pathIndex < path.length - 1) {
+    pathIndex++;
+  } else {
+    // Deliver water in batches after reaching the tank.
+    delivered = Math.min(deliverable, delivered + 2);
+    collected = delivered;
+    updateScore();
+
+    if (delivered >= deliverable) {
+      endLevel();
+      return;
+    }
+  }
+
+  draw();
+  animationId = requestAnimationFrame(animateWater);
+}
+
+function releaseWater() {
+  if (!started || released || finished) return;
+
+  playSound("click");
+  released = true;
+  releaseBtn.disabled = true;
+  difficultySelect.disabled = true;
+
+  path = findPath();
+  pathIndex = 0;
+
+  if (path.length === 0) {
+    message.textContent =
+      "No path to the tank! Try digging another tunnel.";
     endLevel();
     return;
   }
 
-  draw();
-  animationId = requestAnimationFrame(moveWater);
+  // Longer tunnels lose more water.
+  // The shortest straight route is about 47 cells.
+  const extraDistance = Math.max(0, path.length - 47);
+  deliverable = Math.max(0, 100 - extraDistance * 2);
+
+  message.textContent = "Water is flowing!";
+  animateWater();
 }
 
 function endLevel() {
@@ -389,56 +436,70 @@ function endLevel() {
   animationId = null;
 
   if (collected >= GOAL) {
+    playSound("win");
+
+    celebration.hidden = false;
+
     if (level < MAX_LEVEL) {
       message.textContent =
-        "Level complete! You collected " +
-        collected + "% of the water!";
-
+        "Success! You collected " + collected +
+        "% of the water!";
       nextBtn.hidden = false;
     } else {
       message.textContent =
         "Congratulations! You completed Aquifer!";
     }
   } else {
+    playSound("lose");
+
     message.textContent =
-      "Not enough water reached the tank. " +
       "You collected " + collected +
-      "%. Try again!";
+      "%. You need " + GOAL +
+      "% to win. Try again!";
   }
 
   draw();
 }
 
 startBtn.addEventListener("click", () => {
+  playSound("click");
+
   started = true;
   startBtn.disabled = true;
   releaseBtn.disabled = false;
+  difficultySelect.disabled = true;
 
   message.textContent =
-    "Drag through the dirt to create a path. Avoid rocks!";
+    "Drag through the dirt to connect the water to the tank!";
 });
 
-releaseBtn.addEventListener("click", () => {
-  if (!started || released || finished) return;
-
-  released = true;
-  releaseBtn.disabled = true;
-
-  message.textContent = "Water released!";
-
-  moveWater();
-});
+releaseBtn.addEventListener("click", releaseWater);
 
 restartBtn.addEventListener("click", () => {
+  playSound("click");
   makeLevel();
 });
 
 nextBtn.addEventListener("click", () => {
+  playSound("click");
+
   if (level < MAX_LEVEL) {
     level++;
     makeLevel();
   }
 });
 
-// Load the first level.
+difficultySelect.addEventListener("change", () => {
+  playSound("click");
+
+  GOAL = difficultyGoals[difficultySelect.value];
+  level = 1;
+  makeLevel();
+
+  message.textContent =
+    difficultySelect.value.toUpperCase() +
+    " mode selected! Collect " +
+    GOAL + "% to win.";
+});
+
 makeLevel();
