@@ -1,0 +1,58 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aquifer | charity: water</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>AQUIFER</h1>
+    <p>Dig a path. Save the water.</p>
+    <p class="brand">Inspired by charity: water</p>
+  </header>
+
+  <main>
+    <section class="game-container">
+      <div class="stats">
+        <span>Level: <strong id="level">1</strong></span>
+        <span>Collected: <strong id="collected">0%</strong></span>
+        <span>Goal: <strong>70%</strong></span>
+      </div>
+
+      <div class="game-area">
+        <canvas id="gameCanvas" width="400" height="560"
+          aria-label="Aquifer digging puzzle game">
+        </canvas>
+      </div>
+
+      <p id="message" role="status">
+        Dig a path from the water source to the tank!
+      </p>
+
+      <div class="controls">
+        <button id="startBtn">Start Game</button>
+        <button id="releaseBtn" disabled>Release Water</button>
+        <button id="restartBtn">Restart Level</button>
+        <button id="nextBtn" hidden>Next Level</button>
+      </div>
+    </section>
+
+    <section class="about">
+      <h2>Every Drop Matters</h2>
+      <p>
+        Clean water changes lives. Learn how charity: water
+        helps communities access clean and safe drinking water.
+      </p>
+      <a href="https://www.charitywater.org"
+         target="_blank" rel="noopener noreferrer">
+        Learn More About charity: water
+      </a>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
